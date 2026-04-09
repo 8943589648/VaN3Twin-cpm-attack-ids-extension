@@ -100,6 +100,7 @@ public:
 
     /**
      * @brief Log an attack entry (both original and manipulated values).
+     *        Called on the sender side for attacker vehicles only.
      */
     void logAttack(long senderStationId, long objectId,
                    long origXSpeed, long origYSpeed, double origHeading,
@@ -117,9 +118,37 @@ public:
               << origXSpeed << "," << origYSpeed << "," << origHeading << ","
               << atkXSpeed << "," << atkYSpeed << "," << atkHeading << std::endl;
     }
+    /**
+     * @brief Log a ground-truth entry for a received CPM object.
+     *        Records the received (possibly manipulated) values alongside
+     *        the ground-truth label (manipulated vs. normal).
+     *        Called on the receiver side for all incoming CPMs.
+     */
+    void logGroundTruth(long senderStationId, long objectId,
+                        long xSpeed, long ySpeed, double headingDeg,
+                        bool wasManipulated) {
+        if (!m_gtFileOpened) {
+            m_gtOfs.open(m_gtLogFile, std::ios::out | std::ios::trunc);
+            m_gtOfs << "timestamp_ms,sender_id,object_id,"
+                    << "xSpeed,ySpeed,heading_deg,manipulated" << std::endl;
+            m_gtFileOpened = true;
+        }
+        m_gtOfs << Simulator::Now().GetMilliSeconds() << ","
+                << senderStationId << ","
+                << objectId << ","
+                << xSpeed << "," << ySpeed << "," << headingDeg << ","
+                << (wasManipulated ? "true" : "false") << std::endl;
+    }
 
     void setLogFile(const std::string &filename) { m_logFile = filename; }
+    void setGroundTruthLogFile(const std::string &filename) { m_gtLogFile = filename; }
 
+    void closeGroundTruthLog() {
+        if (m_gtFileOpened) {
+            m_gtOfs.close();
+            m_gtFileOpened = false;
+        }
+    }
     void closeLog() {
         if (m_fileOpened) {
             m_ofs.close();
@@ -134,6 +163,9 @@ private:
     std::string m_logFile;
     std::ofstream m_ofs;
     bool m_fileOpened;
+    std::string m_gtLogFile  = "cpm_groundtruth_log.csv";
+    std::ofstream m_gtOfs;
+    bool m_gtFileOpened      = false;
 };
 
 } // namespace ns3

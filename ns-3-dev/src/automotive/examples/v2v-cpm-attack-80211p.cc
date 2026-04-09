@@ -67,6 +67,8 @@ static std::unordered_map<long, CPMAttackModule*> attackModules;
 static std::unordered_map<long, CPMIDSModule*> idsModules;
 // Evaluation module: global
 static CPMEvalModule evalModule;
+// Ground-truth logger: global (receiver-side, logs all received objects with GT label)
+static CPMAttackModule groundTruthLogger;
 // Set of attacker station IDs (for ground-truth labeling)
 static std::set<long> attackerStationIds;
 
@@ -136,6 +138,12 @@ void receiveCPM(asn1cpp::Seq<CollectivePerceptionMessage> cpm, Address from,
             IDSClassification idsResult = ids->evaluate(
                 (long)my_stationID, senderStationId, objectId,
                 posX, posY, xSpeed, ySpeed, headingDeci);
+                
+            // Log ground-truth for this received object
+            double headingDeg = (headingDeci != 3601) ? headingDeci / 10.0 : -1.0;
+            groundTruthLogger.logGroundTruth(senderStationId, objectId,
+                                             xSpeed, ySpeed, headingDeg,
+                                             isFromAttacker);
 
             // Record in evaluation module
             bool flaggedAnomalous = (idsResult != IDS_NORMAL);
@@ -373,6 +381,7 @@ packetSocket.Install(c);
     evalModule.printSummary();
     evalModule.writeSummaryCSV("cpm_eval_summary.csv");
     evalModule.closeLog();
+    groundTruthLogger.closeGroundTruthLog();
 
     // Cleanup attack and IDS modules
     for (auto &pair : attackModules) {
