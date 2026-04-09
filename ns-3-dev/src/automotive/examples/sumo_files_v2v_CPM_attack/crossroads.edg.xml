@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<edges>
+    <!-- Main road (east-west), 50 km/h = 13.89 m/s, 2 lanes -->
+    <edge id="west_to_center"   from="west"   to="center" numLanes="2" speed="13.89"/>
+    <edge id="center_to_east"   from="center" to="east"   numLanes="2" speed="13.89"/>
+    <edge id="east_to_center"   from="east"   to="center" numLanes="2" speed="13.89"/>
+    <edge id="center_to_west"   from="center" to="west"   numLanes="2" speed="13.89"/>
+
+    <!-- Side street (north-south), 30 km/h = 8.33 m/s, 1 lane -->
+    <edge id="south_to_center"  from="south"  to="center" numLanes="1" speed="8.33"/>
+    <edge id="center_to_north"  from="center" to="north"  numLanes="1" speed="8.33"/>
+    <edge id="north_to_center"  from="north"  to="center" numLanes="1" speed="8.33"/>
+    <edge id="center_to_south"  from="center" to="south"  numLanes="1" speed="8.33"/>
+</edges>

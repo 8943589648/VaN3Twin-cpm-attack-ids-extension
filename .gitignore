@@ -1,0 +1,15 @@
+build/
+cmake-cache/
+*.o
+*.so
+*.a
+.vscode/
+.idea/
+*.swp
+*~
+*:Zone.Identifier
+.DS_Store
+Thumbs.db
+__pycache__/
+*.pyc
+*.log
