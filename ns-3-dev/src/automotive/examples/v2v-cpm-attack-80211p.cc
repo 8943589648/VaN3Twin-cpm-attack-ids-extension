@@ -34,6 +34,9 @@
 #include "ns3/mobility-helper.h"
 #include <iostream>
 #include <set>
+#include <map>
+#include <fstream>
+#include "ns3/random-variable-stream.h"
 #include "ns3/sumo_xml_parser.h"
 #include "ns3/BSMap.h"
 #include "ns3/caBasicService.h"
@@ -170,6 +173,7 @@ int main(int argc, char *argv[])
     double attackSpeedOffset = 100.0;   // km/h
     double attackHeadingOffset = 90.0;  // degrees
     double attackerPercentage = 20.0;   // percent of vehicles that are attackers
+    std::string attackMode = "fixed";   // "fixed" | "fixed_random"
     double idsSpeedThreshold = 150.0;   // km/h
     double idsHeadingTolerance = 45.0;  // degrees
 
@@ -188,6 +192,7 @@ int main(int argc, char *argv[])
     cmd.AddValue("attack-speed-offset", "Speed manipulation offset [km/h]", attackSpeedOffset);
     cmd.AddValue("attack-heading-offset", "Heading manipulation offset [degrees]", attackHeadingOffset);
     cmd.AddValue("attacker-percentage", "Percentage of attacker vehicles [%]", attackerPercentage);
+    cmd.AddValue("attack-mode", "Offset mode: fixed | fixed_random (offsets act as max values)", attackMode);
     cmd.AddValue("ids-speed-threshold", "IDS max plausible speed [km/h]", idsSpeedThreshold);
     cmd.AddValue("ids-heading-tolerance", "IDS heading consistency tolerance [degrees]", idsHeadingTolerance);
     cmd.Parse(argc, argv);
@@ -221,6 +226,35 @@ int main(int argc, char *argv[])
         attackerStationIds.insert(i);
         std::cout << "  Vehicle veh" << i << " designated as ATTACKER" << std::endl;
     }
+
+    // ====== Per-attacker offsets ======
+    // fixed:        every attacker uses the configured offsets
+    // fixed_random: each attacker draws its offsets once at start-up and keeps them;
+    //               speed ~ U(0, attack-speed-offset), heading ~ U(-max, +max).
+    //               Reproducible via ns-3 RNG: same --RngRun => same offsets.
+    if (attackMode != "fixed" && attackMode != "fixed_random") {
+        NS_FATAL_ERROR("Unknown --attack-mode: " << attackMode << " (use fixed | fixed_random)");
+    }
+    std::map<long, std::pair<double, double>> attackerOffsets; // stationId -> (speed km/h, heading deg)
+    Ptr<UniformRandomVariable> offsetRng = CreateObject<UniformRandomVariable>();
+    offsetRng->SetStream(1);
+    double speedLo = std::min(0.0, attackSpeedOffset), speedHi = std::max(0.0, attackSpeedOffset);
+    double headingMax = std::fabs(attackHeadingOffset);
+
+    std::ofstream offsetLog("cpm_attacker_offsets.csv", std::ios::out | std::ios::trunc);
+    offsetLog << "station_id,mode,speed_offset_kmh,heading_offset_deg" << std::endl;
+    for (long id : attackerStationIds) {   // std::set => ascending, deterministic draw order
+        double speed = attackSpeedOffset, heading = attackHeadingOffset;
+        if (attackMode == "fixed_random") {
+            speed = offsetRng->GetValue(speedLo, speedHi);
+            heading = offsetRng->GetValue(-headingMax, headingMax);
+        }
+        attackerOffsets[id] = {speed, heading};
+        offsetLog << id << "," << attackMode << "," << speed << "," << heading << std::endl;
+        std::cout << "  veh" << id << " offsets: speed=" << speed
+                  << " km/h, heading=" << heading << " deg" << std::endl;
+    }
+    offsetLog.close();
 
     // Create nodes
     NodeContainer c;
@@ -318,7 +352,8 @@ packetSocket.Install(c);
         std::cout << "  [DEBUG] Creating attack module..." << std::endl;
         CPMAttackModule* atkMod = new CPMAttackModule();
         if (attackerStationIds.count(stationId)) {
-            atkMod->enable(attackSpeedOffset, attackHeadingOffset);
+            const auto &off = attackerOffsets.at(stationId);
+            atkMod->enable(off.first, off.second);
             atkMod->setLogFile("cpm_attack_log.csv");
         }
         attackModules[stationId] = atkMod;
