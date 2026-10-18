@@ -11,6 +11,8 @@
 #define CPM_IDS_MODULE_H
 
 #include <unordered_map>
+#include <map>
+#include <cstdint>
 #include <string>
 #include <fstream>
 #include <cmath>
@@ -39,7 +41,6 @@ public:
         : m_speedThresholdKmh(150.0),
           m_headingToleranceDeg(45.0),
           m_logFile("cpm_ids_log.csv"),
-          m_fileOpened(false),
           m_enabled(true) {}
 
     /**
@@ -141,22 +142,39 @@ public:
 
     void setLogFile(const std::string &filename) { m_logFile = filename; }
 
-    void closeLog() {
-        if (m_fileOpened) {
-            m_ofs.close();
-            m_fileOpened = false;
-        }
-    }
+    void closeLog() { closeSharedStream(m_logFile); }
 
 private:
+    /**
+     * @brief Shared log streams (one per file name) for all module instances.
+     *        Every vehicle has its own module instance; previously each instance
+     *        opened the same CSV with ios::trunc, so instances overwrote each
+     *        other and only the last one's rows survived.
+     */
+    static std::map<std::string, std::ofstream>& sharedStreams() {
+        static std::map<std::string, std::ofstream> streams;
+        return streams;
+    }
+    static std::ofstream& sharedStream(const std::string &file, const std::string &header) {
+        auto &streams = sharedStreams();
+        auto it = streams.find(file);
+        if (it == streams.end()) {
+            it = streams.emplace(file, std::ofstream(file, std::ios::out | std::ios::trunc)).first;
+            it->second << header << std::endl;
+        }
+        return it->second;
+    }
+    static void closeSharedStream(const std::string &file) {
+        auto &streams = sharedStreams();
+        auto it = streams.find(file);
+        if (it != streams.end() && it->second.is_open()) it->second.close();
+    }
+
     void logEvaluation(long receiverId, long senderId, long objectId,
                        double speedKmh, double headingDeg, IDSClassification result) {
-        if (!m_fileOpened) {
-            m_ofs.open(m_logFile, std::ios::out | std::ios::trunc);
-            m_ofs << "timestamp_ms,receiver_id,sender_id,object_id,"
-                  << "speed_kmh,heading_deg,classification" << std::endl;
-            m_fileOpened = true;
-        }
+        std::ofstream &ofs = sharedStream(m_logFile,
+            "timestamp_ms,receiver_id,sender_id,object_id,"
+            "speed_kmh,heading_deg,classification");
         std::string classStr;
         switch (result) {
             case IDS_NORMAL:            classStr = "normal"; break;
@@ -164,7 +182,7 @@ private:
             case IDS_ANOMALOUS_HEADING: classStr = "anomalous_heading"; break;
             case IDS_ANOMALOUS_BOTH:    classStr = "anomalous_both"; break;
         }
-        m_ofs << Simulator::Now().GetMilliSeconds() << ","
+        ofs << Simulator::Now().GetMilliSeconds() << ","
               << receiverId << ","
               << senderId << ","
               << objectId << ","
@@ -176,8 +194,6 @@ private:
     double m_speedThresholdKmh;
     double m_headingToleranceDeg;
     std::string m_logFile;
-    std::ofstream m_ofs;
-    bool m_fileOpened;
     bool m_enabled;
 
     // Store previous state of each perceived object (keyed by sender+objectId)

@@ -12,6 +12,7 @@
 #define CPM_ATTACK_MODULE_H
 
 #include <set>
+#include <map>
 #include <string>
 #include <fstream>
 #include <cmath>
@@ -38,8 +39,7 @@ public:
         : m_enabled(false),
           m_speedOffsetKmh(0.0),
           m_headingOffsetDeg(0.0),
-          m_logFile("cpm_attack_log.csv"),
-          m_fileOpened(false) {}
+          m_logFile("cpm_attack_log.csv") {}
 
     /**
      * @brief Enable attack mode for this vehicle.
@@ -105,14 +105,11 @@ public:
     void logAttack(long senderStationId, long objectId,
                    long origXSpeed, long origYSpeed, double origHeading,
                    long atkXSpeed, long atkYSpeed, double atkHeading) {
-        if (!m_fileOpened) {
-            m_ofs.open(m_logFile, std::ios::out | std::ios::trunc);
-            m_ofs << "timestamp_ms,sender_id,object_id,"
-                  << "orig_xSpeed,orig_ySpeed,orig_heading_deg,"
-                  << "atk_xSpeed,atk_ySpeed,atk_heading_deg" << std::endl;
-            m_fileOpened = true;
-        }
-        m_ofs << Simulator::Now().GetMilliSeconds() << ","
+        std::ofstream &ofs = sharedStream(m_logFile,
+            "timestamp_ms,sender_id,object_id,"
+            "orig_xSpeed,orig_ySpeed,orig_heading_deg,"
+            "atk_xSpeed,atk_ySpeed,atk_heading_deg");
+        ofs << Simulator::Now().GetMilliSeconds() << ","
               << senderStationId << ","
               << objectId << ","
               << origXSpeed << "," << origYSpeed << "," << origHeading << ","
@@ -149,20 +146,38 @@ public:
             m_gtFileOpened = false;
         }
     }
-    void closeLog() {
-        if (m_fileOpened) {
-            m_ofs.close();
-            m_fileOpened = false;
-        }
-    }
+    void closeLog() { closeSharedStream(m_logFile); }
 
 private:
+    /**
+     * @brief Shared log streams (one per file name) for all module instances.
+     *        Every vehicle has its own module instance; previously each instance
+     *        opened the same CSV with ios::trunc, so instances overwrote each
+     *        other and only the last one's rows survived.
+     */
+    static std::map<std::string, std::ofstream>& sharedStreams() {
+        static std::map<std::string, std::ofstream> streams;
+        return streams;
+    }
+    static std::ofstream& sharedStream(const std::string &file, const std::string &header) {
+        auto &streams = sharedStreams();
+        auto it = streams.find(file);
+        if (it == streams.end()) {
+            it = streams.emplace(file, std::ofstream(file, std::ios::out | std::ios::trunc)).first;
+            it->second << header << std::endl;
+        }
+        return it->second;
+    }
+    static void closeSharedStream(const std::string &file) {
+        auto &streams = sharedStreams();
+        auto it = streams.find(file);
+        if (it != streams.end() && it->second.is_open()) it->second.close();
+    }
+
     bool m_enabled;
     double m_speedOffsetKmh;
     double m_headingOffsetDeg;
     std::string m_logFile;
-    std::ofstream m_ofs;
-    bool m_fileOpened;
     std::string m_gtLogFile  = "cpm_groundtruth_log.csv";
     std::ofstream m_gtOfs;
     bool m_gtFileOpened      = false;
