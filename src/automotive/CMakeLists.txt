@@ -1589,6 +1589,9 @@ set(header_files
         model/Applications/simpleCAMSender-gps-tc.h
         model/Applications/simpleVAMSender-gps-tc.h
 
+		model/Facilities/CPMAttackModule.h
+		model/Facilities/CPMIDSModule.h
+		model/Facilities/CPMEvalModule.h
         model/Facilities/denBasicService.h
         model/Facilities/denData.h
         model/Facilities/asn_utils.h

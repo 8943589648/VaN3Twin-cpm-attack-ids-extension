@@ -151,6 +151,16 @@ build_lib_example(
         ${libtraci}
 )
 
+build_lib_example(
+    	NAME v2v-cpm-attack-80211p
+   	SOURCE_FILES v2v-cpm-attack-80211p.cc
+    	LIBRARIES_TO_LINK 
+        ${libcarla}
+        ${libautomotive}
+        ${libwave}
+        ${libtraci}
+)
+
 #build_lib_example(
 #        NAME v2v-congestion-nrv2x
 #        SOURCE_FILES v2v-congestion-nrv2x.cc

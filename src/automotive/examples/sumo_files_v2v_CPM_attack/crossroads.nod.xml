@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<nodes>
+    <!-- Center intersection: priority = side street yields to main road -->
+    <node id="center" x="500.0" y="500.0" type="priority"/>
+
+    <!-- Main road (east-west) -->
+    <node id="west"   x="0.0"    y="500.0"/>
+    <node id="east"   x="1000.0" y="500.0"/>
+
+    <!-- Side street (north-south) -->
+    <node id="south"  x="500.0"  y="0.0"/>
+    <node id="north"  x="500.0"  y="1000.0"/>
+</nodes>

@@ -14,6 +14,7 @@
 #include "ns3/LDM.h"
 #include "ns3/ldm-utils.h"
 #include "signalInfoUtils.h"
+#include "CPMAttackModule.h"
 
 extern "C" {
   #include "ns3/CollectivePerceptionMessage.h"
@@ -122,6 +123,9 @@ public:
   void setRedundancyMitigation(bool choice){m_redundancy_mitigation = choice;}
   void disableRedundancyMitigation(){m_redundancy_mitigation = false;}
 
+  void setAttackModule(CPMAttackModule* attackModule) { m_attackModule = attackModule; }
+  CPMAttackModule* getAttackModule() { return m_attackModule; }
+
   uint64_t getWannabeSent() {return m_wannabe_sent;}
 
   const long T_GenCpmMin_ms = 100;
@@ -197,6 +201,7 @@ private:
   long m_T_next_dcc = -1;
 
   uint64_t m_wannabe_sent = 0;
+  CPMAttackModule* m_attackModule = nullptr;
 };
 }
 #endif // CPBASICSERVICE_H

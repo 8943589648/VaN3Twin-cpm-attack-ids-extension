@@ -220,12 +220,18 @@ namespace ns3 {
                     asn1cpp::setField (velocity->present,
                                        Velocity3dWithConfidence_PR_cartesianVelocity);
                     auto cartesianVelocity = asn1cpp::makeSeq (VelocityCartesian);
-                    asn1cpp::setField (cartesianVelocity->xVelocity.value,
-                                       it->vehData.xSpeedAbs.getData ());
+                    long xSpeedVal = it->vehData.xSpeedAbs.getData ();
+                    long ySpeedVal = it->vehData.ySpeedAbs.getData ();
+                    if (m_attackModule != nullptr && m_attackModule->isEnabled ()) {
+                        long atkX, atkY;
+                        m_attackModule->manipulateSpeed (xSpeedVal, ySpeedVal, atkX, atkY);
+                        xSpeedVal = atkX;
+                        ySpeedVal = atkY;
+                    }
+                    asn1cpp::setField (cartesianVelocity->xVelocity.value, xSpeedVal);
                     asn1cpp::setField (cartesianVelocity->xVelocity.confidence,
                                        SpeedConfidence_unavailable);
-                    asn1cpp::setField (cartesianVelocity->yVelocity.value,
-                                       it->vehData.ySpeedAbs.getData ());
+                    asn1cpp::setField (cartesianVelocity->yVelocity.value, ySpeedVal);
                     asn1cpp::setField (cartesianVelocity->yVelocity.confidence,
                                        SpeedConfidence_unavailable);
                     asn1cpp::setField (velocity->choice.cartesianVelocity, cartesianVelocity);
@@ -249,12 +255,22 @@ namespace ns3 {
 
                     //Only z angle
                     auto angle = asn1cpp::makeSeq (EulerAnglesWithConfidence);
-                    if ((it->vehData.heading*DECI) < CartesianAngleValue_unavailable &&
-                        (it->vehData.heading*DECI) > 0)
-                      asn1cpp::setField (angle->zAngle.value, (it->vehData.heading*DECI));
+                    double headingVal = it->vehData.heading;
+                    if (m_attackModule != nullptr && m_attackModule->isEnabled ())
+                        headingVal = m_attackModule->manipulateHeading (headingVal);
+                    if ((headingVal*DECI) < CartesianAngleValue_unavailable &&
+                        (headingVal*DECI) > 0)
+                      asn1cpp::setField (angle->zAngle.value, (long)(headingVal*DECI));
                     else
                       asn1cpp::setField (angle->zAngle.value, CartesianAngleValue_unavailable);
                     asn1cpp::setField (angle->zAngle.confidence, AngleConfidence_unavailable);
+                    if (m_attackModule != nullptr && m_attackModule->isEnabled ()) {
+                        m_attackModule->logAttack (
+                            m_station_id, it->vehData.stationID,
+                            it->vehData.xSpeedAbs.getData (), it->vehData.ySpeedAbs.getData (),
+                            it->vehData.heading,
+                            xSpeedVal, ySpeedVal, headingVal);
+                    }
                     asn1cpp::setField (PO->angles, angle);
                     auto OD1 = asn1cpp::makeSeq (ObjectDimension);
                     if (it->vehData.vehicleLength.getData () < 1023 &&
