@@ -147,17 +147,6 @@ foresee::addMCMRxCallback ()
 }
 
 void
-foresee::setTrajectoryPredictor (double horizon_time, double step_time, double negotiation_time,
-                                 double deceleration_time, double lc_duration, PredictionType prediction_type)
-{
-  m_traj_predictor = new trajectoryPrediction(horizon_time, step_time, negotiation_time, deceleration_time);
-  m_step_time = step_time;
-  m_negotiation_time = negotiation_time;
-  m_time_to_lc = lc_duration;
-  m_prediction_type = prediction_type;
-}
-
-void
 foresee::WrapperFORESEEMobilityModel()
 {
   // Check if the number of lanes is valid
