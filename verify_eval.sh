@@ -3,13 +3,13 @@
 #   A. --eval-exclude-attackers  (attacker receivers are left out of the metrics)
 #   B. --attack-start            (attackers manipulate only from the given time on)
 #
-# Run from ~/VaN3Twin/ns-3-dev   ->   bash verify_eval.sh
+# Run from ns-3-dev   ->   bash verify_eval.sh [attack start in s, default 60]
 # Regression reference: verify_runs/fixed from the old verify.sh (run with the
 # previous code). If it is missing, the regression check is skipped.
 set -e
 OUT=verify_runs_eval
 REF=verify_runs/fixed
-START=30
+START=${1:-60}
 rm -rf "$OUT"; mkdir -p "$OUT"
 
 run() {
@@ -73,6 +73,14 @@ check("no manipulation before the start time", all(t >= START for t in first.val
       f"first manipulation: {min(first.values()):.0f} ms")
 print(f"INFO attackers that started: {len(first)} of {len(attackers)} "
       f"(an attacker that leaves the map before the start never attacks)")
+first_x = {}
+for r in rows("exclude", "cpm_attack_log.csv"):
+    t = float(r["timestamp_ms"]); first_x[r["sender_id"]] = min(first_x.get(r["sender_id"], t), t)
+print("INFO first manipulated CPM per attacker without delay: "
+      + ", ".join(f"{k}: {v/1000:.1f} s" for k, v in sorted(first_x.items(), key=lambda x: int(x[0]))))
+if first_x and START <= min(first_x.values()):
+    print(f"WARN start time {START/1000:.0f} s is before any attacker sends objects - "
+          f"the delay has no effect, choose a later start")
 check("at least one attacker starts manipulating", len(first) > 0)
 gt = rows("start", "cpm_groundtruth_log.csv")
 bad = [r for r in gt if r["sender_id"] in attackers and r["sender_id"] in first and (
@@ -85,10 +93,10 @@ check("benign senders are never labelled manipulated",
 ev_s = rows("start", "cpm_eval_log.csv")
 check("no TP/FN before the start time",
       not any(e["result"] in ("TP", "FN") and float(e["timestamp_ms"]) < START for e in ev_s))
-pre = [e for e in ev_s if float(e["timestamp_ms"]) < START]
+pre_atk = [e for e in ev_s if float(e["timestamp_ms"]) < START and e["sender_id"] in attackers]
 check("attacker senders before the start count as normal",
-      any(e["sender_id"] in attackers for e in pre) and
-      all(e["ground_truth"] == "normal" for e in pre if e["sender_id"] in attackers))
+      all(e["ground_truth"] == "normal" for e in pre_atk), f"{len(pre_atk)} rows before the start")
+check("the start time changes the result (some attacker rows before the start)", len(pre_atk) > 0)
 
 print("\n=== Summaries (reference) ===")
 for run in ("legacy", "exclude", "start"):

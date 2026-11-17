@@ -13,7 +13,7 @@ It was developed as part of the bachelor's thesis
 | Attack module | `src/automotive/model/Facilities/CPMAttackModule.h` | Manipulates speed and heading of perceived objects before ASN.1 encoding; logs original and manipulated values |
 | IDS module | `src/automotive/model/Facilities/CPMIDSModule.h` | Rule-based host IDS on the receiver side: speed plausibility check and heading consistency check |
 | Evaluation module | `src/automotive/model/Facilities/CPMEvalModule.h` | Builds the confusion matrix during the run and computes precision, recall, FPR and accuracy |
-| Attack hook | `src/automotive/model/Facilities/cpBasicService.cc` | `setAttackModule()` – the only change to upstream VaN3Twin code besides registering the new files in the two `CMakeLists.txt` |
+| Attack hook | `src/automotive/model/Facilities/cpBasicService.cc` | `setAttackModule()` hook. Other upstream files changed: the two `CMakeLists.txt` (registering the new files) and `foresee.cc` (compile workaround) |
 | Simulation scenario | `src/automotive/examples/v2v-cpm-attack-80211p.cc` | Main simulation (IEEE 802.11p, SUMO via TraCI) |
 | SUMO scenario | `src/automotive/examples/sumo_files_v2v_CPM_attack/` | Priority-regulated crossroads, 20 vehicles, 1 km × 1 km |
 
@@ -21,7 +21,7 @@ All other code is upstream VaN3Twin.
 
 ## Installation
 
-The repository has the same layout as upstream VaN3Twin and is installed the same way: `sandbox_builder.sh` downloads ns-3 and installs this repository into `ns-3-dev/`. It is based on upstream commit [`4d65b39`](https://github.com/DriveX-devs/VaN3Twin/commit/4d65b39) (2 April 2026), the version used in the thesis, so `git diff 4d65b39` shows every change made by the extension. Tested on Ubuntu 22.04 (also under WSL). Install SUMO first (see the [VaN3Twin docs](https://github.com/DriveX-devs/VaN3Twin)).
+The repository has the same layout as upstream VaN3Twin and is installed the same way: `sandbox_builder.sh` downloads ns-3 and installs this repository into `ns-3-dev/`. It is based on upstream commit [`4d65b39`](https://github.com/DriveX-devs/VaN3Twin/commit/4d65b39) (2 April 2026), the version used in the thesis, so `git diff 4d65b39` shows every change made by the extension. Tested on Ubuntu 22.04, also under WSL 2 (not tested on Ubuntu 24.04). Install SUMO first (see the [VaN3Twin docs](https://github.com/DriveX-devs/VaN3Twin)).
 
 ```bash
 git clone -b cpm-attack-ids-extension https://github.com/8943589648/VaN3Twin-cpm-attack-ids-extension.git
@@ -32,7 +32,9 @@ cd ns-3-dev
 ./ns3 build
 ```
 
-As in upstream VaN3Twin, the script removes the git metadata from the folder it runs in; keep a separate clone if you want to work with the history. `install-dependencies` also builds gRPC and OpenCV from source, which takes a while.
+As in upstream VaN3Twin, the script moves the repository, including its git history, into `ns-3-dev/`, so you can edit, build, run and commit directly there. `install-dependencies` also builds gRPC and OpenCV from source, which takes a while.
+
+> **WSL:** use WSL 2. Under WSL 1, ns-3 skips the `fd-net-device` module, which VaN3Twin's automotive module links against, and the build fails with `cannot find -llibfd-net-device`. Check with `wsl -l -v` in PowerShell.
 
 > **Note:** If you change one of the header-only modules (`CPM*Module.h`) and the change does not seem to take effect, copy the header into `build/include/ns3/` and rebuild.
 
@@ -43,6 +45,8 @@ Run from inside `ns-3-dev/`, because the SUMO paths are relative to it:
 ```bash
 ./ns3 run "v2v-cpm-attack-80211p"
 ```
+
+The scenario starts SUMO with its GUI. On a machine without a display (server, WSL without GUI support), run it on a virtual display: `sudo apt install xvfb`, then prefix the command with `xvfb-run -a`.
 
 Example with random per-vehicle offsets and a fixed seed:
 
@@ -58,7 +62,7 @@ Example with random per-vehicle offsets and a fixed seed:
 | `--attack-speed-offset` | `100` | Speed offset [km/h]. In `fixed_random` mode: speed offset ~ U(0, value) |
 | `--attack-heading-offset` | `90` | Heading offset [°]. In `fixed_random` mode: heading offset ~ U(−value, +value) |
 | `--attacker-percentage` | `20` | Share of attacker vehicles [%]. The first N vehicles by station ID become attackers |
-| `--attack-start` | `0` | Time [s] from which attackers manipulate their CPMs. Before that they behave like benign vehicles |
+| `--attack-start` | `0` | Time [s] from which attackers manipulate their CPMs. Before that they behave like benign vehicles. In the included scenario, attackers send their first perceived objects after about 35 s, so smaller values have no effect |
 | `--eval-exclude-attackers` | `true` | Leave the IDS decisions of attacker vehicles (as receivers) out of the metrics. The IDS still runs on all vehicles |
 | `--ids-speed-threshold` | `150` | IDS: maximum plausible speed [km/h] |
 | `--ids-heading-tolerance` | `45` | IDS: maximum deviation between reported and position-derived heading [°] |
@@ -71,7 +75,7 @@ Speed manipulation scales both Cartesian velocity components, so the direction o
 
 ## Output
 
-All files are written to the working directory (`ns-3-dev/`) and are overwritten by each run.
+All files are written to the working directory (`ns-3-dev/`) and are overwritten by each run. They are not tracked by git; do not commit them.
 
 | File | Content |
 |---|---|
@@ -88,7 +92,7 @@ Speed values in the attack and ground-truth logs are in 0.01 m/s (ASN.1 units); 
 
 - Runs are deterministic: the same parameters and the same `--RngRun` produce identical output.
 - `--RngRun` changes **all** random streams in ns-3 (channel, backoff, …), not only the attack offsets. Different seeds therefore also lead to slightly different traffic and CPM counts.
-- With the current environment (SUMO 1.26.0), the default `fixed` run evaluates 6,026 perceived objects, while the thesis reports 5,864. The difference also occurs without any of the post-thesis changes and is most likely caused by a changed environment (e.g. SUMO version). Results from this repository should therefore be compared against a fresh baseline run rather than against the thesis tables.
+- With the current environment (SUMO 1.26.0), the default `fixed` run evaluates 5,037 perceived objects (6,026 with `--eval-exclude-attackers=false`, the method used in the thesis, which reports 5,864). The difference between 6,026 and 5,864 also occurs without any of the post-thesis changes and is most likely caused by a changed environment (e.g. SUMO version). Results from this repository should therefore be compared against a fresh baseline run rather than against the thesis tables.
 
 ## Changes since the thesis
 
@@ -101,7 +105,7 @@ To reproduce the evaluation method used in the thesis, run with `--eval-exclude-
 
 ## Verification
 
-`verify.sh` checks the attack modes and the logs, `verify_eval.sh` checks the attack start time and the receiver exclusion. Run both from `ns-3-dev/`.
+`verify.sh` checks the attack modes and the logs, `verify_eval.sh [start time in s, default 60]` checks the attack start time and the receiver exclusion. Run both from `ns-3-dev/` (with `xvfb-run -a` if there is no display). If a folder `verify_runs/fixed` from an earlier `verify.sh` run exists, `verify_eval.sh` also checks that the old evaluation settings reproduce it exactly.
 
 ## License
 
