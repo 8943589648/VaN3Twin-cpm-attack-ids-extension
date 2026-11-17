@@ -15,6 +15,8 @@
  *   - CPM attribute manipulation (speed/heading) on configurable attacker vehicles
  *   - Rule-based Host-based IDS with plausibility checks on the receiver side
  *   - Dual logging of ground-truth and manipulated values for evaluation
+ *   - Configurable attack start time (--attack-start)
+ *   - Optional exclusion of attacker receivers from the evaluation (--eval-exclude-attackers)
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -74,6 +76,8 @@ static CPMEvalModule evalModule;
 static CPMAttackModule groundTruthLogger;
 // Set of attacker station IDs (for ground-truth labeling)
 static std::set<long> attackerStationIds;
+// If true, IDS decisions made by attacker vehicles (as receivers) are not counted
+static bool evalExcludeAttackers = true;
 
 // ====== Callbacks ======
 void receiveCAM(asn1cpp::Seq<CAM> cam, Address from, StationID_t my_stationID,
@@ -90,8 +94,20 @@ void receiveCPM(asn1cpp::Seq<CollectivePerceptionMessage> cpm, Address from,
     // Get sender station ID from CPM header
     long senderStationId = asn1cpp::getField(cpm->header.stationId, long);
 
-    // Determine if this CPM was sent by an attacker (ground truth)
+    // Ground truth: the CPM counts as manipulated only if the sender is an attacker
+    // AND its attack had already started when the CPM was generated. hasStarted() is
+    // set by the sender's first manipulated CPM, so CPMs generated before the attack
+    // start keep the label "normal" even if they are received after it.
     bool isFromAttacker = (attackerStationIds.find(senderStationId) != attackerStationIds.end());
+    bool wasManipulated = false;
+    if (isFromAttacker) {
+        auto atkIt = attackModules.find(senderStationId);
+        wasManipulated = (atkIt != attackModules.end() && atkIt->second->hasStarted());
+    }
+
+    // Attackers still run the IDS, but their decisions can be left out of the metrics
+    bool receiverIsAttacker = (attackerStationIds.count((long)my_stationID) > 0);
+    bool countInEval = !(evalExcludeAttackers && receiverIsAttacker);
 
     // Get IDS module for this receiver
     auto idsIt = idsModules.find((long)my_stationID);
@@ -146,13 +162,15 @@ void receiveCPM(asn1cpp::Seq<CollectivePerceptionMessage> cpm, Address from,
             double headingDeg = (headingDeci != 3601) ? headingDeci / 10.0 : -1.0;
             groundTruthLogger.logGroundTruth(senderStationId, objectId,
                                              xSpeed, ySpeed, headingDeg,
-                                             isFromAttacker);
+                                             wasManipulated);
 
             // Record in evaluation module
-            bool flaggedAnomalous = (idsResult != IDS_NORMAL);
-            evalModule.record(isFromAttacker, flaggedAnomalous,
-                              Simulator::Now().GetMilliSeconds(),
-                              senderStationId, objectId);
+            if (countInEval) {
+                bool flaggedAnomalous = (idsResult != IDS_NORMAL);
+                evalModule.record(wasManipulated, flaggedAnomalous,
+                                  Simulator::Now().GetMilliSeconds(),
+                                  senderStationId, objectId);
+            }
         }
     }
 }
@@ -174,6 +192,7 @@ int main(int argc, char *argv[])
     double attackHeadingOffset = 90.0;  // degrees
     double attackerPercentage = 20.0;   // percent of vehicles that are attackers
     std::string attackMode = "fixed";   // "fixed" | "fixed_random"
+    double attackStart = 0.0;           // s, time from which attackers manipulate CPMs
     double idsSpeedThreshold = 150.0;   // km/h
     double idsHeadingTolerance = 45.0;  // degrees
 
@@ -193,6 +212,8 @@ int main(int argc, char *argv[])
     cmd.AddValue("attack-heading-offset", "Heading manipulation offset [degrees]", attackHeadingOffset);
     cmd.AddValue("attacker-percentage", "Percentage of attacker vehicles [%]", attackerPercentage);
     cmd.AddValue("attack-mode", "Offset mode: fixed | fixed_random (offsets act as max values)", attackMode);
+    cmd.AddValue("attack-start", "Time from which attackers manipulate CPMs [s]", attackStart);
+    cmd.AddValue("eval-exclude-attackers", "Exclude IDS decisions of attacker receivers from the evaluation", evalExcludeAttackers);
     cmd.AddValue("ids-speed-threshold", "IDS max plausible speed [km/h]", idsSpeedThreshold);
     cmd.AddValue("ids-heading-tolerance", "IDS heading consistency tolerance [degrees]", idsHeadingTolerance);
     cmd.Parse(argc, argv);
@@ -217,7 +238,10 @@ int main(int argc, char *argv[])
     std::cout << "Vehicles: " << numberOfNodes << ", Attackers: " << numAttackers
               << " (" << attackerPercentage << "%)" << std::endl;
     std::cout << "Attack config: speed_offset=" << attackSpeedOffset
-              << " km/h, heading_offset=" << attackHeadingOffset << " deg" << std::endl;
+              << " km/h, heading_offset=" << attackHeadingOffset << " deg"
+              << ", start=" << attackStart << " s" << std::endl;
+    std::cout << "Eval config: exclude_attacker_receivers="
+              << (evalExcludeAttackers ? "true" : "false") << std::endl;
     std::cout << "IDS config: speed_threshold=" << idsSpeedThreshold
               << " km/h, heading_tolerance=" << idsHeadingTolerance << " deg" << std::endl;
 
@@ -235,6 +259,9 @@ int main(int argc, char *argv[])
     if (attackMode != "fixed" && attackMode != "fixed_random") {
         NS_FATAL_ERROR("Unknown --attack-mode: " << attackMode << " (use fixed | fixed_random)");
     }
+    if (attackStart < 0.0 || attackStart >= simTime) {
+        NS_FATAL_ERROR("--attack-start must be >= 0 and < --sim-time (" << simTime << " s)");
+    }
     std::map<long, std::pair<double, double>> attackerOffsets; // stationId -> (speed km/h, heading deg)
     Ptr<UniformRandomVariable> offsetRng = CreateObject<UniformRandomVariable>();
     offsetRng->SetStream(1);
@@ -242,7 +269,7 @@ int main(int argc, char *argv[])
     double headingMax = std::fabs(attackHeadingOffset);
 
     std::ofstream offsetLog("cpm_attacker_offsets.csv", std::ios::out | std::ios::trunc);
-    offsetLog << "station_id,mode,speed_offset_kmh,heading_offset_deg" << std::endl;
+    offsetLog << "station_id,mode,speed_offset_kmh,heading_offset_deg,attack_start_s" << std::endl;
     for (long id : attackerStationIds) {   // std::set => ascending, deterministic draw order
         double speed = attackSpeedOffset, heading = attackHeadingOffset;
         if (attackMode == "fixed_random") {
@@ -250,7 +277,8 @@ int main(int argc, char *argv[])
             heading = offsetRng->GetValue(-headingMax, headingMax);
         }
         attackerOffsets[id] = {speed, heading};
-        offsetLog << id << "," << attackMode << "," << speed << "," << heading << std::endl;
+        offsetLog << id << "," << attackMode << "," << speed << "," << heading
+                  << "," << attackStart << std::endl;
         std::cout << "  veh" << id << " offsets: speed=" << speed
                   << " km/h, heading=" << heading << " deg" << std::endl;
     }
@@ -354,6 +382,7 @@ packetSocket.Install(c);
         if (attackerStationIds.count(stationId)) {
             const auto &off = attackerOffsets.at(stationId);
             atkMod->enable(off.first, off.second);
+            atkMod->setStartTime(Seconds(attackStart));
             atkMod->setLogFile("cpm_attack_log.csv");
         }
         attackModules[stationId] = atkMod;

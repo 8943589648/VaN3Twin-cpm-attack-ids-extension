@@ -58,12 +58,16 @@ Example with random per-vehicle offsets and a fixed seed:
 | `--attack-speed-offset` | `100` | Speed offset [km/h]. In `fixed_random` mode: speed offset ~ U(0, value) |
 | `--attack-heading-offset` | `90` | Heading offset [°]. In `fixed_random` mode: heading offset ~ U(−value, +value) |
 | `--attacker-percentage` | `20` | Share of attacker vehicles [%]. The first N vehicles by station ID become attackers |
+| `--attack-start` | `0` | Time [s] from which attackers manipulate their CPMs. Before that they behave like benign vehicles |
+| `--eval-exclude-attackers` | `true` | Leave the IDS decisions of attacker vehicles (as receivers) out of the metrics. The IDS still runs on all vehicles |
 | `--ids-speed-threshold` | `150` | IDS: maximum plausible speed [km/h] |
 | `--ids-heading-tolerance` | `45` | IDS: maximum deviation between reported and position-derived heading [°] |
 | `--sim-time` | `120` | Simulation duration [s] |
 | `--RngRun` | `1` | ns-3 run number (seed). Same value gives an identical run |
 
-Speed manipulation scales both Cartesian velocity components, so the direction of travel is preserved. The attack is persistent: every CPM of an attacker is manipulated.
+Speed manipulation scales both Cartesian velocity components, so the direction of travel is preserved. Once started, the attack is persistent: every CPM of an attacker is manipulated.
+
+**Ground-truth label:** a received object counts as manipulated if its sender is an attacker and that attacker had already generated a manipulated CPM, i.e. the attack was active when the CPM was generated.
 
 ## Output
 
@@ -72,11 +76,11 @@ All files are written to the working directory (`ns-3-dev/`) and are overwritten
 | File | Content |
 |---|---|
 | `cpm_eval_summary.csv` | Confusion matrix (TP, FP, TN, FN) and metrics |
-| `cpm_eval_log.csv` | One row per received perceived object: ground-truth label, IDS decision, outcome (TP/FP/TN/FN) |
+| `cpm_eval_log.csv` | One row per evaluated perceived object: ground-truth label, IDS decision, outcome (TP/FP/TN/FN) |
 | `cpm_groundtruth_log.csv` | Received object values and whether they were manipulated |
 | `cpm_attack_log.csv` | Sender side, attackers only: original and manipulated speed/heading per object |
 | `cpm_ids_log.csv` | Receiver side: IDS classification per object (`normal`, `anomalous_speed`, `anomalous_heading`, `anomalous_both`) |
-| `cpm_attacker_offsets.csv` | Offsets applied per attacker (shows the drawn values in `fixed_random` mode) |
+| `cpm_attacker_offsets.csv` | Offsets and start time per attacker (shows the drawn values in `fixed_random` mode) |
 
 Speed values in the attack and ground-truth logs are in 0.01 m/s (ASN.1 units); the IDS log uses km/h.
 
@@ -90,6 +94,14 @@ Speed values in the attack and ground-truth logs are in 0.01 m/s (ASN.1 units); 
 
 - **`fixed_random` attack mode:** per-vehicle random offsets, reproducible via `--RngRun`.
 - **Log fix:** `cpm_attack_log.csv` and `cpm_ids_log.csv` were previously overwritten by the per-vehicle module instances and contained only one vehicle. The evaluation metrics reported in the thesis were not affected, because they come from the single global evaluation module.
+- **Attack start time** (`--attack-start`): attackers can start manipulating later in the run; the ground-truth label follows the actual start.
+- **Attacker receivers excluded from the evaluation** (`--eval-exclude-attackers`, on by default): in the thesis, IDS decisions of attacker vehicles were counted as well.
+
+To reproduce the evaluation method used in the thesis, run with `--eval-exclude-attackers=false --attack-start=0`.
+
+## Verification
+
+`verify.sh` checks the attack modes and the logs, `verify_eval.sh` checks the attack start time and the receiver exclusion. Run both from `ns-3-dev/`.
 
 ## License
 

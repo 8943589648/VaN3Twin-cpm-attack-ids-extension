@@ -39,6 +39,8 @@ public:
         : m_enabled(false),
           m_speedOffsetKmh(0.0),
           m_headingOffsetDeg(0.0),
+          m_startTime(Seconds(0)),
+          m_started(false),
           m_logFile("cpm_attack_log.csv") {}
 
     /**
@@ -54,6 +56,26 @@ public:
 
     void disable() { m_enabled = false; }
     bool isEnabled() const { return m_enabled; }
+
+    /**
+     * @brief Set the simulation time from which this attacker manipulates CPMs.
+     *        Before that time the vehicle behaves like a benign vehicle.
+     */
+    void setStartTime(Time startTime) { m_startTime = startTime; }
+    Time getStartTime() const { return m_startTime; }
+
+    /**
+     * @brief True if this vehicle is an attacker and its start time has been reached.
+     *        Checked by the CP Basic Service when a CPM is generated.
+     */
+    bool isActive() const { return m_enabled && Simulator::Now() >= m_startTime; }
+
+    /**
+     * @brief True once this attacker has generated at least one manipulated CPM.
+     *        Used for the ground-truth label on the receiver side: a CPM counts as
+     *        manipulated only if the attack had already started when it was generated.
+     */
+    bool hasStarted() const { return m_started; }
     double getSpeedOffsetKmh() const { return m_speedOffsetKmh; }
     double getHeadingOffsetDeg() const { return m_headingOffsetDeg; }
 
@@ -65,6 +87,7 @@ public:
      * @param[out] attackYSpeed  Manipulated y velocity
      */
     void manipulateSpeed(long xSpeed, long ySpeed, long &attackXSpeed, long &attackYSpeed) {
+        m_started = true;
         // Convert offset from km/h to 0.01 m/s: km/h * (1000/3600) * 100 = km/h * 27.778
         double offsetCms = m_speedOffsetKmh * 27.778;
 
@@ -91,6 +114,7 @@ public:
      * @return Manipulated heading in degrees, wrapped to [0, 360)
      */
     double manipulateHeading(double headingDeg) {
+        m_started = true;
         double newHeading = headingDeg + m_headingOffsetDeg;
         // Wrap to [0, 360)
         newHeading = std::fmod(newHeading, 360.0);
@@ -177,6 +201,8 @@ private:
     bool m_enabled;
     double m_speedOffsetKmh;
     double m_headingOffsetDeg;
+    Time m_startTime;        // attack start (simulation time)
+    bool m_started;          // set by the first manipulation
     std::string m_logFile;
     std::string m_gtLogFile  = "cpm_groundtruth_log.csv";
     std::ofstream m_gtOfs;

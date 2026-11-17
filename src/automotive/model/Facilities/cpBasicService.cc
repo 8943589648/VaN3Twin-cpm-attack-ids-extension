@@ -222,7 +222,7 @@ namespace ns3 {
                     auto cartesianVelocity = asn1cpp::makeSeq (VelocityCartesian);
                     long xSpeedVal = it->vehData.xSpeedAbs.getData ();
                     long ySpeedVal = it->vehData.ySpeedAbs.getData ();
-                    if (m_attackModule != nullptr && m_attackModule->isEnabled ()) {
+                    if (m_attackModule != nullptr && m_attackModule->isActive ()) {
                         long atkX, atkY;
                         m_attackModule->manipulateSpeed (xSpeedVal, ySpeedVal, atkX, atkY);
                         xSpeedVal = atkX;
@@ -256,7 +256,7 @@ namespace ns3 {
                     //Only z angle
                     auto angle = asn1cpp::makeSeq (EulerAnglesWithConfidence);
                     double headingVal = it->vehData.heading;
-                    if (m_attackModule != nullptr && m_attackModule->isEnabled ())
+                    if (m_attackModule != nullptr && m_attackModule->isActive ())
                         headingVal = m_attackModule->manipulateHeading (headingVal);
                     if ((headingVal*DECI) < CartesianAngleValue_unavailable &&
                         (headingVal*DECI) > 0)
@@ -264,7 +264,7 @@ namespace ns3 {
                     else
                       asn1cpp::setField (angle->zAngle.value, CartesianAngleValue_unavailable);
                     asn1cpp::setField (angle->zAngle.confidence, AngleConfidence_unavailable);
-                    if (m_attackModule != nullptr && m_attackModule->isEnabled ()) {
+                    if (m_attackModule != nullptr && m_attackModule->isActive ()) {
                         m_attackModule->logAttack (
                             m_station_id, it->vehData.stationID,
                             it->vehData.xSpeedAbs.getData (), it->vehData.ySpeedAbs.getData (),
